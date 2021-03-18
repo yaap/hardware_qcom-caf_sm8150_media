@@ -145,6 +145,7 @@ extern "C" {
 #endif
 
 #define LUMINANCE_DIV_FACTOR 10000.0
+#define LUMINANCE_MAXDISPLAY_CDM2 1000
 
 /* defined in mp-ctl.h */
 #define MPCTLV3_VIDEO_DECODE_PB_HINT 0x41C04000
@@ -1612,7 +1613,7 @@ void omx_vdec::process_event_cb(void *ctxt)
                                             pThis->omx_report_error ();
                                             break;
                                         }
-#if !HDR10_SETMETADATA_ENABLE
+//#if !HDR10_SETMETADATA_ENABLE
                                         if (pThis->output_capability != V4L2_PIX_FMT_VP9 &&
                                             pThis->output_capability != V4L2_PIX_FMT_HEVC)
                                             break;
@@ -1634,7 +1635,7 @@ void omx_vdec::process_event_cb(void *ctxt)
                                                     OMX_CORE_OUTPUT_PORT_INDEX,
                                                     OMX_QTIIndexConfigDescribeHDR10PlusInfo, NULL);
                                         }
-#endif
+//#endif
                                         break;
 
                 case OMX_COMPONENT_GENERATE_EVENT_INPUT_FLUSH:
@@ -3142,7 +3143,7 @@ OMX_ERRORTYPE  omx_vdec::send_command_proxy(OMX_IN OMX_HANDLETYPE hComp,
                struct timespec ts;
 
                clock_gettime(CLOCK_REALTIME, &ts);
-               ts.tv_sec += 2;
+               ts.tv_sec += 1;
                DEBUG_PRINT_LOW("waiting for %d EBDs of CODEC CONFIG buffers ",
                        m_queued_codec_config_count);
                BITMASK_SET(&m_flags, OMX_COMPONENT_FLUSH_DEFERRED);
@@ -8635,12 +8636,6 @@ OMX_ERRORTYPE omx_vdec::fill_buffer_done(OMX_HANDLETYPE hComp,
                     is_interlaced && is_duplicate_ts_valid && !is_mbaff);
         }
     }
-
-    if (buffer->nTimeStamp < 0) {
-        DEBUG_PRINT_ERROR("[FBD] Invalid buffer timestamp %lld", (long long)buffer->nTimeStamp);
-        return OMX_ErrorBadParameter;
-    }
-
     VIDC_TRACE_INT_LOW("FBD-TS", buffer->nTimeStamp / 1000);
 
     if (m_cb.FillBufferDone) {
@@ -10378,16 +10373,14 @@ OMX_ERRORTYPE omx_vdec::update_portdef(OMX_PARAM_PORTDEFINITIONTYPE *portDefn)
     memset(&fmt, 0x0, sizeof(struct v4l2_format));
     if (0 == portDefn->nPortIndex) {
         int ret = 0;
-        if (secure_mode) {
-            fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-            fmt.fmt.pix_mp.pixelformat = output_capability;
-            ret = ioctl(drv_ctx.video_driver_fd, VIDIOC_G_FMT, &fmt);
-            if (ret) {
-                DEBUG_PRINT_ERROR("Get Resolution failed");
-                return OMX_ErrorHardware;
-            }
-            drv_ctx.ip_buf.buffer_size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
+        fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+        fmt.fmt.pix_mp.pixelformat = output_capability;
+        ret = ioctl(drv_ctx.video_driver_fd, VIDIOC_G_FMT, &fmt);
+        if (ret) {
+            DEBUG_PRINT_ERROR("Get Resolution failed");
+            return OMX_ErrorHardware;
         }
+        drv_ctx.ip_buf.buffer_size = fmt.fmt.pix_mp.plane_fmt[0].sizeimage;
         portDefn->eDir =  OMX_DirInput;
         portDefn->nBufferCountActual = drv_ctx.ip_buf.actualcount;
         portDefn->nBufferCountMin    = drv_ctx.ip_buf.mincount;
@@ -10399,10 +10392,6 @@ OMX_ERRORTYPE omx_vdec::update_portdef(OMX_PARAM_PORTDEFINITIONTYPE *portDefn)
         portDefn->format.video.xFramerate = m_fps_received;
         portDefn->bEnabled   = m_inp_bEnabled;
         portDefn->bPopulated = m_inp_bPopulated;
-
-        fmt.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-        fmt.fmt.pix_mp.pixelformat = output_capability;
-        ioctl(drv_ctx.video_driver_fd, VIDIOC_G_FMT, &fmt);
     } else if (1 == portDefn->nPortIndex) {
         unsigned int buf_size = 0;
         int ret = 0;
@@ -11116,10 +11105,24 @@ bool omx_vdec::handle_mastering_display_color_info(void* data)
         (hdr_info->sType1.mW.y != mastering_display_payload->nWhitePointY);
 
     /* Maximum Display Luminance from the bitstream is in 0.0001 cd/m2 while the HDRStaticInfo extension
-       requires it in cd/m2, so dividing by 10000 and rounding the value after division
+       requires it in cd/m2, so dividing by 10000 and rounding the value after division.
+       Check if max luminance is at least 100 cd/m^2.This check is required for few bistreams where
+       max luminance is not in correct scale. Use the default max luminance value if the value from
+       the bitstream is less than 100 cd/m^2.
     */
-    uint16_t max_display_luminance_cd_m2 =
+
+    uint16_t max_display_luminance_cd_m2;
+    if ((mastering_display_payload->nMaxDisplayMasteringLuminance > 0) &&
+                        ((mastering_display_payload->nMaxDisplayMasteringLuminance / LUMINANCE_DIV_FACTOR) < 100)) {
+        max_display_luminance_cd_m2 = LUMINANCE_MAXDISPLAY_CDM2;
+        DEBUG_PRINT_HIGH("Invalid maxLuminance value from SEI [%.4f]. Using default [%u]",
+              (mastering_display_payload->nMaxDisplayMasteringLuminance / LUMINANCE_DIV_FACTOR),
+              LUMINANCE_MAXDISPLAY_CDM2);
+    } else {
+        max_display_luminance_cd_m2 =
         static_cast<int>((mastering_display_payload->nMaxDisplayMasteringLuminance / LUMINANCE_DIV_FACTOR) + 0.5);
+    }
+
     internal_disp_changed_flag |= (hdr_info->sType1.mMaxDisplayLuminance != max_display_luminance_cd_m2) ||
         (hdr_info->sType1.mMinDisplayLuminance != mastering_display_payload->nMinDisplayMasteringLuminance);
 
@@ -11547,14 +11550,14 @@ bool omx_vdec::handle_extradata(OMX_BUFFERHEADERTYPE *p_buf_hdr)
                             (payload_len > HDR_DYNAMIC_META_DATA_SZ)) {
                             DEBUG_PRINT_ERROR("Invalid User extradata size %u for HDR10+", data->nDataSize);
                         } else {
-#if HDR10_SETMETADATA_ENABLE
+// enable setting metadata via gralloc handle
+//#if HDR10_SETMETADATA_ENABLE
                             color_mdata.dynamicMetaDataValid = true;
                             color_mdata.dynamicMetaDataLen = payload_len;
                             memcpy(color_mdata.dynamicMetaDataPayload, userdata_payload->data, payload_len);
                             DEBUG_PRINT_HIGH("Copied %u bytes of HDR10+ extradata", payload_len);
-#else
+//#endif
                             store_hevc_hdr10plusinfo(payload_len, userdata_payload);
-#endif
                         }
                     }
                     if (client_extradata & OMX_EXTNUSER_EXTRADATA) {
@@ -11622,7 +11625,8 @@ bool omx_vdec::handle_extradata(OMX_BUFFERHEADERTYPE *p_buf_hdr)
                     final_color_aspects.mMatrixCoeffs = ColorAspects::MatrixBT601_6;
                 }
                 get_preferred_hdr_info(final_hdr_info);
-#if HDR10_SETMETADATA_ENABLE
+// enable setting metadata via gralloc handle
+//#if HDR10_SETMETADATA_ENABLE
                 convert_hdr_info_to_metadata(final_hdr_info, color_mdata);
                 convert_hdr10plusinfo_to_metadata(p_buf_hdr->pMarkData, color_mdata);
                 remove_hdr10plusinfo_using_cookie(p_buf_hdr->pMarkData);
@@ -11630,7 +11634,7 @@ bool omx_vdec::handle_extradata(OMX_BUFFERHEADERTYPE *p_buf_hdr)
                 print_debug_hdr_color_info_mdata(&color_mdata);
                 print_debug_hdr10plus_metadata(color_mdata);
                 set_colormetadata_in_handle(&color_mdata, buf_index);
-#endif
+//#endif
         }
 
     }
@@ -12820,9 +12824,9 @@ bool omx_vdec::allocate_color_convert_buf::get_color_format(OMX_COLOR_FORMATTYPE
 
 void omx_vdec::send_codec_config() {
     if (codec_config_flag) {
-        unsigned long p1 = 0; // Parameter - 1
-        unsigned long p2 = 0; // Parameter - 2
-        unsigned long ident = 0;
+        unsigned long p1 = 0, p2 = 0;
+        unsigned long p3 = 0, p4 = 0;
+        unsigned long ident = 0, ident2 = 0;
         pthread_mutex_lock(&m_lock);
         DEBUG_PRINT_LOW("\n Check Queue for codec_config buffer \n");
         while (m_etb_q.m_size) {
@@ -12840,6 +12844,21 @@ void omx_vdec::send_codec_config() {
                 }
             } else if (ident == OMX_COMPONENT_GENERATE_ETB) {
                 if (((OMX_BUFFERHEADERTYPE *)p2)->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
+                    while (m_ftb_q.m_size) {
+                        m_ftb_q.pop_entry(&p3,&p4,&ident2);
+                        if (ident2 == OMX_COMPONENT_GENERATE_FTB) {
+                            pthread_mutex_unlock(&m_lock);
+                            if (fill_this_buffer_proxy((OMX_HANDLETYPE)p3,\
+                                        (OMX_BUFFERHEADERTYPE *)p4) != OMX_ErrorNone) {
+                                DEBUG_PRINT_ERROR("\n fill_this_buffer_proxy failure");
+                                omx_report_error ();
+                            }
+                            pthread_mutex_lock(&m_lock);
+                        } else if (ident2 == OMX_COMPONENT_GENERATE_FBD) {
+                            fill_buffer_done(&m_cmp,(OMX_BUFFERHEADERTYPE *)p3);
+                        }
+                    }
+                    pthread_mutex_unlock(&m_lock);
                     if (empty_this_buffer_proxy((OMX_HANDLETYPE)p1,\
                                 (OMX_BUFFERHEADERTYPE *)p2) != OMX_ErrorNone) {
                         DEBUG_PRINT_ERROR("\n empty_this_buffer_proxy failure");
