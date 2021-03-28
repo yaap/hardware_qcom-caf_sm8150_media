@@ -23,9 +23,9 @@ MM_VIDEO += libstagefrighthw
 PRODUCT_PACKAGES += $(MM_VIDEO)
 
 ifeq ($(call is-board-platform-in-list, msmnile $(MSMSTEPPE) atoll $(TRINKET)),true)
-include hardware/qcom/media/conf_files/$(TARGET_BOARD_PLATFORM)/$(TARGET_BOARD_PLATFORM).mk
+include hardware/qcom-caf/sm8150/media/conf_files/$(TARGET_BOARD_PLATFORM)/$(TARGET_BOARD_PLATFORM).mk
 else ifeq ($(TARGET_BOARD_PLATFORM), sdmshrike)
-include hardware/qcom/media/conf_files/msmnile/msmnile.mk
+include hardware/qcom-caf/sm8150/media/conf_files/msmnile/msmnile.mk
 endif
 
 endif
