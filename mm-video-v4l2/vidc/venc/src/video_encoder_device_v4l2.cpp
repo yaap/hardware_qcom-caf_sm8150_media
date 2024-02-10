@@ -193,7 +193,6 @@ venc_dev::venc_dev(class omx_venc *venc_class)
     mIsNativeRecorder = false;
     m_hdr10meta_enabled = false;
     hdr10metadata_supported = false;
-    is_hevcprofile_explicitly_set = false;
 
     Platform::Config::getInt32(Platform::vidc_enc_log_in,
             (int32_t *)&m_debug.in_buffer_log, 0);
@@ -4361,7 +4360,6 @@ bool venc_dev::venc_empty_buf(void *buffer, void *pmem_data_buf, unsigned index,
                             handle->format == HAL_PIXEL_FORMAT_YCbCr_420_P010_VENUS) &&
                             codec_profile.profile != V4L2_MPEG_VIDC_VIDEO_HEVC_PROFILE_MAIN10)
                             {
-                                is_hevcprofile_explicitly_set = true;
                                 if (!venc_set_profile (OMX_VIDEO_HEVCProfileMain10)) {
                                     DEBUG_PRINT_ERROR("ERROR: Unsuccessful in updating Profile OMX_VIDEO_HEVCProfileMain10");
                                     return false;
@@ -5308,7 +5306,7 @@ bool venc_dev::venc_set_profile(OMX_U32 eProfile)
 
     codec_profile.profile = control.value;
 
-    if (hdr10metadata_supported == true && (!is_hevcprofile_explicitly_set)) {
+    if (hdr10metadata_supported == true) {
         if (venc_set_extradata_hdr10metadata() == false)
         {
             DEBUG_PRINT_ERROR("Failed to set extradata HDR10PLUS_METADATA");
@@ -7286,9 +7284,7 @@ void venc_dev::venc_get_consumer_usage(OMX_U32* usage) {
     *usage |= GRALLOC_USAGE_PRIVATE_ALLOC_UBWC;
 #endif
 
-    if (hevc &&
-       (eProfile == (OMX_U32)OMX_VIDEO_HEVCProfileMain10HDR10 ||
-        eProfile == (OMX_U32)OMX_VIDEO_HEVCProfileMain10)) {
+    if (hevc && eProfile == (OMX_U32)OMX_VIDEO_HEVCProfileMain10HDR10) {
         DEBUG_PRINT_INFO("Setting 10-bit consumer usage bits");
         *usage |= GRALLOC_USAGE_PRIVATE_10BIT_VIDEO;
         if (mUseLinearColorFormat & REQUEST_LINEAR_COLOR_10_BIT) {

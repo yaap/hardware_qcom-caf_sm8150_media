@@ -608,7 +608,6 @@ class venc_dev
                 OMX_TICKS timestamp, OMX_U32 freeSize);
         bool mBitrateSavingsEnable;
         bool hdr10metadata_supported;
-        bool is_hevcprofile_explicitly_set;
 };
 
 enum instance_state {
