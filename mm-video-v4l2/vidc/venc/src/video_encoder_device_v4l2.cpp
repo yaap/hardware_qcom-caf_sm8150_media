@@ -193,6 +193,7 @@ venc_dev::venc_dev(class omx_venc *venc_class)
     mIsNativeRecorder = false;
     m_hdr10meta_enabled = false;
     hdr10metadata_supported = false;
+    is_hevcprofile_explicitly_set = false;
 
     Platform::Config::getInt32(Platform::vidc_enc_log_in,
             (int32_t *)&m_debug.in_buffer_log, 0);
@@ -352,8 +353,6 @@ void* venc_dev::async_venc_message_thread (void *input)
                 }
                 if (v4l2_buf.flags & V4L2_BUF_FLAG_PFRAME) {
                     venc_msg.buf.flags |= OMX_VIDEO_PictureTypeP;
-                } else if (v4l2_buf.flags & V4L2_BUF_FLAG_BFRAME) {
-                    venc_msg.buf.flags |= OMX_VIDEO_PictureTypeB;
                 }
 
                 if (v4l2_buf.flags & V4L2_QCOM_BUF_FLAG_CODECCONFIG)
@@ -1172,7 +1171,7 @@ OMX_ERRORTYPE venc_dev::venc_get_supported_profile_level(OMX_VIDEO_PARAM_PROFILE
     int hevc_profiles[4] = { OMX_VIDEO_HEVCProfileMain,
                              OMX_VIDEO_HEVCProfileMain10,
                              OMX_VIDEO_HEVCProfileMain10HDR10,
-                             OMX_VIDEO_HEVCProfileMainStill };
+                             OMX_VIDEO_HEVCProfileMainStill};
 
     if (!profileLevelType)
         return OMX_ErrorBadParameter;
@@ -4362,6 +4361,7 @@ bool venc_dev::venc_empty_buf(void *buffer, void *pmem_data_buf, unsigned index,
                             handle->format == HAL_PIXEL_FORMAT_YCbCr_420_P010_VENUS) &&
                             codec_profile.profile != V4L2_MPEG_VIDC_VIDEO_HEVC_PROFILE_MAIN10)
                             {
+                                is_hevcprofile_explicitly_set = true;
                                 if (!venc_set_profile (OMX_VIDEO_HEVCProfileMain10)) {
                                     DEBUG_PRINT_ERROR("ERROR: Unsuccessful in updating Profile OMX_VIDEO_HEVCProfileMain10");
                                     return false;
@@ -5308,7 +5308,7 @@ bool venc_dev::venc_set_profile(OMX_U32 eProfile)
 
     codec_profile.profile = control.value;
 
-    if (hdr10metadata_supported == true) {
+    if (hdr10metadata_supported == true && (!is_hevcprofile_explicitly_set)) {
         if (venc_set_extradata_hdr10metadata() == false)
         {
             DEBUG_PRINT_ERROR("Failed to set extradata HDR10PLUS_METADATA");
@@ -5583,9 +5583,9 @@ bool venc_dev::_venc_set_intra_period(OMX_U32 nPFrames, OMX_U32 nBFrames)
         nBFrames = 0;
     }
 
-    if (!venc_validate_range(V4L2_CID_MPEG_VIDC_VIDEO_NUM_B_FRAMES, nBFrames) || (nBFrames > VENC_BFRAME_MAX_COUNT)) {
-        DEBUG_PRINT_ERROR("Invalid settings, hardware doesn't support %u bframes", nBFrames);
-        return false;
+    if (nBFrames > VENC_BFRAME_MAX_COUNT) {
+        DEBUG_PRINT_LOW("Hardware doesn't support %u bframes, Continuing with Max supported count 1", nBFrames);
+        nBFrames = VENC_BFRAME_MAX_COUNT;
     }
 
     intra_period.num_pframes = nPFrames;
@@ -6125,10 +6125,10 @@ bool venc_dev::venc_calibrate_gop()
         return false;
     }
 
-    if (nBframes && !nPframes) {
+   /* if (nBframes && !nPframes) {
         DEBUG_PRINT_ERROR("nPframes should be non-zero when nBframes is non-zero\n");
         return false;
-    }
+    }*/
 
     if (nLayers > 1) { /*Multi-layer encoding*/
         sub_gop_size = 1 << (nLayers - 1);
@@ -7286,7 +7286,9 @@ void venc_dev::venc_get_consumer_usage(OMX_U32* usage) {
     *usage |= GRALLOC_USAGE_PRIVATE_ALLOC_UBWC;
 #endif
 
-    if (hevc && eProfile == (OMX_U32)OMX_VIDEO_HEVCProfileMain10HDR10) {
+    if (hevc &&
+       (eProfile == (OMX_U32)OMX_VIDEO_HEVCProfileMain10HDR10 ||
+        eProfile == (OMX_U32)OMX_VIDEO_HEVCProfileMain10)) {
         DEBUG_PRINT_INFO("Setting 10-bit consumer usage bits");
         *usage |= GRALLOC_USAGE_PRIVATE_10BIT_VIDEO;
         if (mUseLinearColorFormat & REQUEST_LINEAR_COLOR_10_BIT) {
