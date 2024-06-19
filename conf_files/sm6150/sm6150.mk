@@ -22,12 +22,6 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PACKAGES += \
     libcodec2_vndk.vendor \
     libcodec2_hidl@1.0.vendor
-ifeq ($(TARGET_FWK_SUPPORTS_FULL_VALUEADDS),true)
-  $(warning "Compiling with full value-added framework")
-else
-  $(warning "Compiling without full value-added framework - enabling GENERIC_ODM_IMAGE")
-  GENERIC_ODM_IMAGE := true
-endif
 
 # Vendor property overrides
 # Enable Codec2.0 HAL for pure AOSP variants.
