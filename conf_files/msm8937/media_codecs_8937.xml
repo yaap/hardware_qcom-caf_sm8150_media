@@ -113,7 +113,6 @@ Only the three quirks included above are recognized at this point:
         <Setting name="max-video-encoder-input-buffers" value="9" />
     </Settings>
     <Encoders>
-        <!-- Video Hardware  -->
         <MediaCodec name="OMX.qcom.video.encoder.avc" type="video/avc" >
             <Quirk name="requires-allocate-on-input-ports" />
             <Quirk name="requires-allocate-on-output-ports" />
@@ -124,29 +123,6 @@ Only the three quirks included above are recognized at this point:
             <Limit name="blocks-per-second" min="1" max="244800" />
             <Limit name="bitrate" range="1-20000000" />
             <Limit name="concurrent-instances" max="8" />
-        </MediaCodec>
-        <!-- Video Software  -->
-        <MediaCodec name="OMX.qcom.video.encoder.mpeg4sw" type="video/mp4v-es" >
-            <Quirk name="requires-allocate-on-input-ports" />
-            <Quirk name="requires-allocate-on-output-ports" />
-            <Quirk name="requires-loaded-to-idle-after-allocation" />
-            <Limit name="size" min="32x32" max="864x480" />
-            <Limit name="alignment" value="2x2" />
-            <Limit name="block-size" value="16x16" />
-            <Limit name="blocks-per-second" min="1" max="48600" />
-            <Limit name="bitrate" range="1-2000000" />
-            <Limit name="concurrent-instances" max="1" />
-        </MediaCodec>
-        <MediaCodec name="OMX.qcom.video.encoder.h263sw" type="video/3gpp" >
-            <Quirk name="requires-allocate-on-input-ports" />
-            <Quirk name="requires-allocate-on-output-ports" />
-            <Quirk name="requires-loaded-to-idle-after-allocation" />
-            <Limit name="size" min="32x32" max="864x480" />
-            <Limit name="alignment" value="4x4" />
-            <Limit name="block-size" value="16x16" />
-            <Limit name="blocks-per-second" min="1" max="48600" />
-            <Limit name="bitrate" range="1-2000000" />
-            <Limit name="concurrent-instances" max="1" />
         </MediaCodec>
     </Encoders>
     <Decoders>
